@@ -198,6 +198,11 @@ export default function RamadanCalendar() {
           ))}
         </div>
       </div>
+
+      {/* Watermark */}
+      <div className="mt-8 text-center text-gray-500 text-sm">
+        Made by alnasrif JH
+      </div>
     </div>
   );
 } 

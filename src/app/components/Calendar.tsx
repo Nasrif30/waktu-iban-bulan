@@ -268,7 +268,6 @@ export default function Calendar() {
             </div>
           ))}
 
-          {/* Calendar days */}
           {/* Add empty cells for days before the first of the month */}
           {Array.from({ length: calendarDays[0]?.gregorian.getDay() || 0 }).map((_, index) => (
             <div key={`empty-${index}`} className="calendar-day opacity-0"></div>
@@ -293,6 +292,11 @@ export default function Calendar() {
               </div>
             );
           })}
+        </div>
+
+        {/* Watermark */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          Made by alnasrif JH
         </div>
       </div>
     </div>
