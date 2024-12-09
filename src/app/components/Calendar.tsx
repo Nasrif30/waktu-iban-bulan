@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths } from 'date-fns';
 import { getMonthCalendar, getPrayerTimes } from '../utils/api';
-import Link from 'next/link';
 
 interface CalendarDay {
   gregorian: Date;

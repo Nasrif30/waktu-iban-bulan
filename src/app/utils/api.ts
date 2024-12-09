@@ -9,36 +9,15 @@ const ISLAMIC_FINDER_BASE_URL = 'https://www.islamicfinder.us/index.php/api';
 
 // Default coordinates for Malaysia
 const DEFAULT_LOCATION = {
-  latitude: 3.1390,
-  longitude: 101.6869,
-  timezone: 'Asia/Kuala_Lumpur',
-  hijriAdjustment: 1,
-  method: 3  // Muslim World League
+  latitude: 1.4854094669440312,
+  longitude: 110.35411071777344,
+  method: 3, // ISNA
+  hijriAdjustment: 0
 };
 
 // Constants for Islamic months
 const ISLAMIC_MONTHS = {
   RAMADAN: 9
-} as const;
-
-// Prayer calculation methods
-const CALCULATION_METHODS = {
-  JAFARI: 0,
-  KARACHI: 1,
-  ISNA: 2,
-  MWL: 3,
-  MECCA: 4,
-  EGYPT: 5,
-  CUSTOM: 6,
-  TEHRAN: 7,
-  ALGERIA: 8,
-  GULF: 9,
-  EGYPT_BIS: 10,
-  UOIF: 11,
-  INDONESIA: 12,
-  TURKEY: 13,
-  GERMANY: 14,
-  RUSSIA: 15
 } as const;
 
 interface IslamicFinderPrayerTimes {
@@ -181,16 +160,14 @@ function isCalendarDayArray(data: CalendarDay | CalendarDay[]): data is Calendar
 }
 
 // Validate the API response data structure
-function isValidCalendarDay(day: unknown): day is HijriCalendarDay {
-  if (!day || typeof day !== 'object') return false;
-  const d = day as any;
-  return Boolean(
-    d &&
-    d.gregorian?.date &&
-    d.gregorian?.weekday?.en &&
-    d.gregorian?.month?.number &&
-    d.hijri?.date &&
-    d.hijri?.month?.number
+function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
+  if (!data || typeof data !== 'object') return false;
+  const day = data as Record<string, unknown>;
+  return (
+    typeof day.gregorian === 'object' &&
+    day.gregorian !== null &&
+    typeof day.hijri === 'object' &&
+    day.hijri !== null
   );
 }
 
@@ -298,8 +275,8 @@ export async function getRamadanCalendar(
       status: 'OK',
       data: ramadanDays
     } as CalendarApiResponse;
-  } catch (error) {
-    console.error('Error fetching Ramadan calendar:', error);
+  } catch {
+    console.error('Error fetching Ramadan calendar');
     throw new Error('Failed to fetch Ramadan calendar. Please try again later.');
   }
 }
@@ -463,7 +440,7 @@ export async function getMonthPrayerTimes(date: Date) {
 }
 
 // Function to verify Ramadan dates
-export async function verifyRamadanDates(year: number) {
+export async function verifyRamadanDates(year: number): Promise<{ datesMatch: boolean }> {
   try {
     const [primaryData, secondaryData] = await Promise.all([
       getRamadanCalendar(year),
@@ -482,8 +459,7 @@ export async function verifyRamadanDates(year: number) {
       secondaryDates: secondaryData,
       datesMatch
     };
-  } catch (error) {
-    console.error('Error verifying Ramadan dates:', error);
-    throw new Error('Failed to verify Ramadan dates. Please try again later.');
+  } catch {
+    return { datesMatch: false };
   }
 } 

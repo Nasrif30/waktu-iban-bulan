@@ -25,7 +25,7 @@ export default function TodayPrayers() {
           isha: timings.Isha,
         });
         setLoading(false);
-      } catch (err) {
+      } catch (error) {
         setError('Failed to fetch prayer times');
         setLoading(false);
       }
@@ -70,8 +70,8 @@ export default function TodayPrayers() {
             nextPrayerName = prayer.name;
             break;
           }
-        } catch (err) {
-          console.error(`Error parsing prayer time: ${prayer.time}`);
+        } catch (error) {
+          console.error(`Error parsing prayer time: ${prayer.time}`, error);
           continue;
         }
       }
@@ -87,8 +87,8 @@ export default function TodayPrayers() {
             new Date()
           );
           nextPrayerName = 'Fajr';
-        } catch (err) {
-          console.error('Error parsing tomorrow\'s Fajr time');
+        } catch (error) {
+          console.error('Error parsing tomorrow\'s Fajr time', error);
         }
       }
 

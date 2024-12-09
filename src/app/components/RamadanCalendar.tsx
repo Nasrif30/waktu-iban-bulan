@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RamadanDay, CalendarApiResponse } from '../types';
-import { format } from 'date-fns';
+import { RamadanDay } from '../types';
 import { getRamadanCalendar, getPrayerTimes, verifyRamadanDates } from '../utils/api';
 
 export default function RamadanCalendar() {
