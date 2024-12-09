@@ -1,8 +1,8 @@
 'use client';
 
 import axios from 'axios';
-import { ApiResponse, CalendarApiResponse, CalendarDay } from '../types';
 import { format } from 'date-fns';
+import { ApiResponse, CalendarApiResponse, CalendarDay } from '../types';
 
 const ALADHAN_BASE_URL = 'https://api.aladhan.com/v1';
 const ISLAMIC_FINDER_BASE_URL = 'https://www.islamicfinder.us/index.php/api';
@@ -14,7 +14,7 @@ const DEFAULT_LOCATION = {
   method: 3, // ISNA
   hijriAdjustment: 0,
   timezone: 'Asia/Kuching'
-};
+} as const;
 
 const ISLAMIC_MONTHS = {
   RAMADAN: 9
@@ -49,6 +49,12 @@ interface HijriCalendarDay {
   };
 }
 
+interface VerificationResult {
+  datesMatch: boolean;
+  primaryDates?: unknown;
+  secondaryDates?: unknown;
+}
+
 // Type guard to check if data is a valid calendar day
 function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
   if (!data || typeof data !== 'object') return false;
@@ -59,6 +65,51 @@ function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
     typeof day.hijri === 'object' &&
     day.hijri !== null
   );
+}
+
+// Utility function to handle API requests with retries
+async function fetchWithRetry(url: string, params: Record<string, string | number>, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.get(url, {
+        params,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      return response.data;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  throw new Error('Maximum retries reached');
+}
+
+// Format time to 24-hour format
+function formatTime(time: string): string {
+  if (!time) return '';
+  return time.replace(/[APap][Mm]$/, '').trim();
+}
+
+// Get the Hijri year for a given Gregorian date
+async function findRamadanYear(gregorianYear: number): Promise<number> {
+  try {
+    const marchFirst = `01-03-${gregorianYear}`;
+    const response = await fetchWithRetry(
+      `${ALADHAN_BASE_URL}/gToH/${marchFirst}`,
+      {}
+    );
+
+    if (response?.code === 200 && response?.data?.hijri) {
+      return parseInt(response.data.hijri.year);
+    }
+    throw new Error('Failed to convert date');
+  } catch (error) {
+    // Fallback to approximation if API fails
+    return Math.floor(gregorianYear - 622 + (gregorianYear - 622) / 32.5);
+  }
 }
 
 // Get Gregorian to Hijri calendar for a specific month
@@ -95,28 +146,9 @@ export async function getMonthCalendar(
   }
 }
 
-// Get the Hijri year for a given Gregorian date
-async function findRamadanYear(gregorianYear: number): Promise<number> {
-  try {
-    const marchFirst = `01-03-${gregorianYear}`;
-    const response = await fetchWithRetry(
-      `${ALADHAN_BASE_URL}/gToH/${marchFirst}`,
-      {}
-    );
-
-    if (response?.code === 200 && response?.data?.hijri) {
-      return parseInt(response.data.hijri.year);
-    }
-    throw new Error('Failed to convert date');
-  } catch (error) {
-    // Fallback to approximation if API fails
-    return Math.floor(gregorianYear - 622 + (gregorianYear - 622) / 32.5);
-  }
-}
-
 // Get Ramadan calendar for a specific year
 export async function getRamadanCalendar(
-  gregorianYear: number, 
+  gregorianYear: number,
   adjustment: number = DEFAULT_LOCATION.hijriAdjustment
 ): Promise<CalendarApiResponse> {
   try {
@@ -288,40 +320,7 @@ export async function getPrayerTimes(date: Date = new Date()): Promise<ApiRespon
   }
 }
 
-// Utility function to handle API requests with retries
-async function fetchWithRetry(url: string, params: Record<string, string | number>, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await axios.get(url, {
-        params,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  throw new Error('Maximum retries reached');
-}
-
-// Format time to 24-hour format
-function formatTime(time: string): string {
-  if (!time) return '';
-  return time.replace(/[APap][Mm]$/, '').trim();
-}
-
 // Function to verify Ramadan dates
-interface VerificationResult {
-  datesMatch: boolean;
-  primaryDates?: unknown;
-  secondaryDates?: unknown;
-}
-
 export async function verifyRamadanDates(year: number): Promise<VerificationResult> {
   try {
     const [primaryData, secondaryData] = await Promise.all([
@@ -345,5 +344,4 @@ export async function verifyRamadanDates(year: number): Promise<VerificationResu
     console.error('Error verifying Ramadan dates:', error);
     return { datesMatch: false };
   }
-} 
 } 
