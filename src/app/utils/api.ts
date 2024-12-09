@@ -16,63 +16,40 @@ const DEFAULT_LOCATION = {
   timezone: 'Asia/Kuching'
 };
 
-// Constants for Islamic months
 const ISLAMIC_MONTHS = {
   RAMADAN: 9
 } as const;
-
-interface IslamicFinderPrayerTimes {
-  Fajr: string;
-  Sunrise: string;
-  Dhuhr: string;
-  Asr: string;
-  Maghrib: string;
-  Isha: string;
-  date: string;
-  timezone: string;
-  method: number;
-}
 
 interface HijriCalendarDay {
   gregorian: {
     date: string;
     format: string;
     day: string;
-    weekday: {
-      en: string;
-    };
+    weekday: { en: string };
     month: {
       number: number;
       en: string;
     };
     year: string;
-    designation: {
-      abbreviated: string;
-      expanded: string;
-    };
+    designation: { abbreviated: string; expanded: string };
   };
   hijri: {
     date: string;
     format: string;
     day: string;
-    weekday: {
-      en: string;
-      ar: string;
-    };
+    weekday: { en: string; ar: string };
     month: {
       number: number;
       en: string;
       ar: string;
     };
     year: string;
-    designation: {
-      abbreviated: string;
-      expanded: string;
-    };
+    designation: { abbreviated: string; expanded: string };
     holidays: string[];
   };
 }
 
+// Type guard to check if data is a valid calendar day
 function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
   if (!data || typeof data !== 'object') return false;
   const day = data as Record<string, unknown>;
@@ -89,7 +66,7 @@ export async function getMonthCalendar(
   month: number,
   year: number,
   adjustment: number = DEFAULT_LOCATION.hijriAdjustment
-) {
+): Promise<CalendarApiResponse> {
   try {
     const params = {
       adjustment: adjustment.toString(),
@@ -110,7 +87,7 @@ export async function getMonthCalendar(
     return {
       code: 200,
       status: 'OK',
-      data: data.data as HijriCalendarDay[]
+      data: data.data as CalendarDay[]
     };
   } catch (error) {
     console.error('Error fetching calendar:', error);
@@ -118,63 +95,9 @@ export async function getMonthCalendar(
   }
 }
 
-// Convert a specific Gregorian date to Hijri
-export async function convertToHijri(
-  date: Date,
-  adjustment: number = DEFAULT_LOCATION.hijriAdjustment
-) {
-  try {
-    const formattedDate = format(date, 'dd-MM-yyyy');
-    const params = {
-      adjustment: adjustment.toString()
-    };
-
-    const data = await fetchWithRetry(
-      `${ALADHAN_BASE_URL}/gToH/${formattedDate}`,
-      params
-    );
-
-    if (!data || data.code !== 200 || !data.data) {
-      throw new Error('Invalid conversion data received');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error converting date:', error);
-    throw new Error('Failed to convert date. Please try again later.');
-  }
-}
-
-// Utility function to handle API requests with retries
-async function fetchWithRetry(url: string, params: Record<string, string | number>, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await axios.get(url, {
-        params,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  throw new Error('Maximum retries reached');
-}
-
-// Type guard to check if data is an array of CalendarDay
-function isCalendarDayArray(data: CalendarDay | CalendarDay[]): data is CalendarDay[] {
-  return Array.isArray(data);
-}
-
 // Get the Hijri year for a given Gregorian date
 async function findRamadanYear(gregorianYear: number): Promise<number> {
   try {
-    // Try March 1st of the Gregorian year as it's likely to be close to Ramadan
     const marchFirst = `01-03-${gregorianYear}`;
     const response = await fetchWithRetry(
       `${ALADHAN_BASE_URL}/gToH/${marchFirst}`,
@@ -197,10 +120,7 @@ export async function getRamadanCalendar(
   adjustment: number = DEFAULT_LOCATION.hijriAdjustment
 ): Promise<CalendarApiResponse> {
   try {
-    // First find the correct Hijri year
     const hijriYear = await findRamadanYear(gregorianYear);
-    
-    // Try a range of ±1 year to ensure we find Ramadan
     const yearsToTry = [hijriYear - 1, hijriYear, hijriYear + 1];
     let ramadanDays: CalendarDay[] = [];
 
@@ -255,7 +175,6 @@ export async function getRamadanCalendar(
             }
           }));
 
-        // Check if these days are for the requested Gregorian year
         const matchingDays = validDays.filter((day: CalendarDay) => 
           day.gregorian.year === gregorianYear.toString()
         );
@@ -276,68 +195,26 @@ export async function getRamadanCalendar(
       status: 'OK',
       data: ramadanDays
     };
-  } catch {
-    console.error('Error fetching Ramadan calendar');
+  } catch (error) {
+    console.error('Error fetching Ramadan calendar:', error);
     throw new Error('Failed to fetch Ramadan calendar. Please try again later.');
   }
 }
 
-// Convert time to 24-hour format
-function formatTime(time: string | undefined): string {
-  if (!time || typeof time !== 'string' || !time.trim()) {
-    return '';
-  }
-
-  try {
-    // If already in 24-hour format (HH:mm)
-    if (time.includes(':') && !time.includes(' ')) {
-      const [hours, minutes] = time.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes)) {
-        return '';
-      }
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    }
-
-    // Convert from 12-hour format (hh:mm AM/PM)
-    const [timeStr, period] = time.split(' ');
-    if (!timeStr || !period) {
-      return '';
-    }
-
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) {
-      return '';
-    }
-
-    let hour = hours;
-    if (period.toUpperCase() === 'PM' && hours !== 12) {
-      hour += 12;
-    } else if (period.toUpperCase() === 'AM' && hours === 12) {
-      hour = 0;
-    }
-
-    return `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  } catch (error) {
-    console.error('Error formatting time:', time, error);
-    return '';
-  }
-}
-
-// Get prayer times from Islamic Finder API
-export async function getPrayerTimes(date: Date = new Date()) {
+// Get prayer times for a specific date
+export async function getPrayerTimes(date: Date = new Date()): Promise<ApiResponse> {
   try {
     const params = {
-      latitude: DEFAULT_LOCATION.latitude,
-      longitude: DEFAULT_LOCATION.longitude,
+      latitude: DEFAULT_LOCATION.latitude.toString(),
+      longitude: DEFAULT_LOCATION.longitude.toString(),
       timezone: DEFAULT_LOCATION.timezone,
-      method: DEFAULT_LOCATION.method,
-      time_format: 0, // 24-hour format
-      juristic: 0, // Standard (Shafi, Hanbli, Maliki)
-      high_latitude: 1, // Midnight
+      method: DEFAULT_LOCATION.method.toString(),
+      time_format: '0',
+      juristic: '0',
+      high_latitude: '1',
       date: format(date, 'yyyy-MM-dd')
     };
     
-    // Get prayer times from Islamic Finder
     const prayerData = await fetchWithRetry(
       `${ISLAMIC_FINDER_BASE_URL}/prayer_times`,
       params
@@ -347,7 +224,6 @@ export async function getPrayerTimes(date: Date = new Date()) {
       throw new Error('Invalid prayer times response format');
     }
 
-    // Get Hijri date for the given date
     const hijriData = await fetchWithRetry(
       `${ALADHAN_BASE_URL}/gToH/${format(date, 'dd-MM-yyyy')}`,
       {}
@@ -357,7 +233,6 @@ export async function getPrayerTimes(date: Date = new Date()) {
       throw new Error('Invalid Hijri date response format');
     }
 
-    // Ensure all times are in 24-hour format and valid
     const timings = {
       Fajr: formatTime(prayerData.results.Fajr),
       Sunrise: formatTime(prayerData.results.Sunrise),
@@ -367,17 +242,21 @@ export async function getPrayerTimes(date: Date = new Date()) {
       Isha: formatTime(prayerData.results.Isha)
     };
 
-    // Only include valid prayer times
     const validTimings = Object.fromEntries(
-      Object.entries(timings).filter(([_, time]) => time !== '')
-    );
+      Object.entries(timings).filter(([, time]) => time !== '')
+    ) as Record<string, string>;
 
-    // Convert to our API format
     return {
       code: 200,
       status: 'OK',
       data: {
-        timings: validTimings,
+        timings: {
+          Fajr: validTimings.Fajr || '',
+          Dhuhr: validTimings.Dhuhr || '',
+          Asr: validTimings.Asr || '',
+          Maghrib: validTimings.Maghrib || '',
+          Isha: validTimings.Isha || ''
+        },
         date: {
           readable: format(date, 'dd MMM yyyy'),
           timestamp: date.getTime().toString(),
@@ -402,42 +281,38 @@ export async function getPrayerTimes(date: Date = new Date()) {
           }
         }
       }
-    } as ApiResponse;
+    };
   } catch (error) {
     console.error('Error fetching prayer times:', error);
     throw new Error('Failed to fetch prayer times. Please try again later.');
   }
 }
 
-// Get prayer times for entire month
-export async function getMonthPrayerTimes(date: Date) {
-  try {
-    const params = {
-      latitude: DEFAULT_LOCATION.latitude,
-      longitude: DEFAULT_LOCATION.longitude,
-      timezone: DEFAULT_LOCATION.timezone,
-      method: DEFAULT_LOCATION.method,
-      time_format: 1,
-      juristic: 0,
-      high_latitude: 1,
-      date: format(date, 'yyyy-MM-dd'),
-      show_entire_month: 1
-    };
-    
-    const data = await fetchWithRetry(
-      `${ISLAMIC_FINDER_BASE_URL}/prayer_times`,
-      params
-    );
-    
-    if (!data || !data.results) {
-      throw new Error('Invalid monthly prayer times response format');
+// Utility function to handle API requests with retries
+async function fetchWithRetry(url: string, params: Record<string, string | number>, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.get(url, {
+        params,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return response.data;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-
-    return data.results;
-  } catch (error) {
-    console.error('Error fetching monthly prayer times:', error);
-    throw new Error('Failed to fetch monthly prayer times. Please try again later.');
   }
+  throw new Error('Maximum retries reached');
+}
+
+// Format time to 24-hour format
+function formatTime(time: string): string {
+  if (!time) return '';
+  return time.replace(/[APap][Mm]$/, '').trim();
 }
 
 // Function to verify Ramadan dates
@@ -453,20 +328,22 @@ export async function verifyRamadanDates(year: number): Promise<VerificationResu
       getRamadanCalendar(year),
       getRamadanCalendar(year, DEFAULT_LOCATION.hijriAdjustment + 1)
     ]);
-    
-    if (!isCalendarDayArray(primaryData.data)) {
+
+    if (!Array.isArray(primaryData.data)) {
       throw new Error('Invalid primary data format');
     }
 
     const primaryDaysCount = primaryData.data.length;
     const datesMatch = primaryDaysCount === 29 || primaryDaysCount === 30;
-    
+
     return {
       primaryDates: primaryData,
       secondaryDates: secondaryData,
       datesMatch
     };
-  } catch {
+  } catch (error) {
+    console.error('Error verifying Ramadan dates:', error);
     return { datesMatch: false };
   }
+} 
 } 

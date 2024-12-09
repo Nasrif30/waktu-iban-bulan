@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths } from 'date-fns';
 import { getMonthCalendar, getPrayerTimes } from '../utils/api';
+import { CalendarDay } from '../types';
 
-interface CalendarDay {
+interface LocalCalendarDay {
   gregorian: Date;
   hijri?: {
     date: string;
@@ -79,7 +80,7 @@ function getTimeRemaining(prayerTime: string): string {
 
 export default function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
+  const [calendarDays, setCalendarDays] = useState<LocalCalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [prayerTimes, setPrayerTimes] = useState<PrayerTime[]>([]);
@@ -144,7 +145,9 @@ export default function Calendar() {
 
         const mappedDays = days.map(day => {
           const formattedDate = format(day, 'dd-MM-yyyy');
-          const hijriData = response.data.find(d => d.gregorian.date === formattedDate);
+          const hijriData = Array.isArray(response.data) 
+            ? response.data.find((d: CalendarDay) => d.gregorian.date === formattedDate)
+            : null;
           
           return {
             gregorian: day,
@@ -159,8 +162,8 @@ export default function Calendar() {
 
         setCalendarDays(mappedDays);
         setLoading(false);
-      } catch (err) {
-        console.error('Calendar error:', err);
+      } catch (error) {
+        console.error('Calendar error:', error);
         setError('Failed to fetch calendar data');
         setLoading(false);
       }
