@@ -26,6 +26,7 @@ export default function TodayPrayers() {
         });
         setLoading(false);
       } catch (error) {
+        console.error('Failed to fetch prayer times:', error);
         setError('Failed to fetch prayer times');
         setLoading(false);
       }

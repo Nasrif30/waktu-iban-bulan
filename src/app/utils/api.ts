@@ -12,7 +12,8 @@ const DEFAULT_LOCATION = {
   latitude: 1.4854094669440312,
   longitude: 110.35411071777344,
   method: 3, // ISNA
-  hijriAdjustment: 0
+  hijriAdjustment: 0,
+  timezone: 'Asia/Kuching'
 };
 
 // Constants for Islamic months
@@ -440,7 +441,13 @@ export async function getMonthPrayerTimes(date: Date) {
 }
 
 // Function to verify Ramadan dates
-export async function verifyRamadanDates(year: number): Promise<{ datesMatch: boolean }> {
+interface VerificationResult {
+  datesMatch: boolean;
+  primaryDates?: unknown;
+  secondaryDates?: unknown;
+}
+
+export async function verifyRamadanDates(year: number): Promise<VerificationResult> {
   try {
     const [primaryData, secondaryData] = await Promise.all([
       getRamadanCalendar(year),
