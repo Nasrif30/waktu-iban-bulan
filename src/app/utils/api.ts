@@ -68,7 +68,11 @@ function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
 }
 
 // Utility function to handle API requests with retries
-async function fetchWithRetry(url: string, params: Record<string, string | number>, retries = 3): Promise<any> {
+async function fetchWithRetry(
+  url: string,
+  params: Record<string, string | number>,
+  retries = 3
+): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await axios.get(url, {
