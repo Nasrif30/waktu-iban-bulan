@@ -73,12 +73,6 @@ interface HijriCalendarDay {
   };
 }
 
-interface CalendarApiResponse {
-  code: number;
-  status: string;
-  data: HijriCalendarDay[];
-}
-
 function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
   if (!data || typeof data !== 'object') return false;
   const day = data as Record<string, unknown>;
@@ -197,10 +191,11 @@ async function findRamadanYear(gregorianYear: number): Promise<number> {
   }
 }
 
+// Get Ramadan calendar for a specific year
 export async function getRamadanCalendar(
   gregorianYear: number, 
   adjustment: number = DEFAULT_LOCATION.hijriAdjustment
-) {
+): Promise<CalendarApiResponse> {
   try {
     // First find the correct Hijri year
     const hijriYear = await findRamadanYear(gregorianYear);
@@ -280,7 +275,7 @@ export async function getRamadanCalendar(
       code: 200,
       status: 'OK',
       data: ramadanDays
-    } as CalendarApiResponse;
+    };
   } catch {
     console.error('Error fetching Ramadan calendar');
     throw new Error('Failed to fetch Ramadan calendar. Please try again later.');
