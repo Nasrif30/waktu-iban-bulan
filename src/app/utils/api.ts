@@ -73,6 +73,23 @@ interface HijriCalendarDay {
   };
 }
 
+interface CalendarApiResponse {
+  code: number;
+  status: string;
+  data: HijriCalendarDay[];
+}
+
+function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
+  if (!data || typeof data !== 'object') return false;
+  const day = data as Record<string, unknown>;
+  return (
+    typeof day.gregorian === 'object' &&
+    day.gregorian !== null &&
+    typeof day.hijri === 'object' &&
+    day.hijri !== null
+  );
+}
+
 // Get Gregorian to Hijri calendar for a specific month
 export async function getMonthCalendar(
   month: number,
@@ -158,18 +175,6 @@ async function fetchWithRetry(url: string, params: Record<string, string | numbe
 // Type guard to check if data is an array of CalendarDay
 function isCalendarDayArray(data: CalendarDay | CalendarDay[]): data is CalendarDay[] {
   return Array.isArray(data);
-}
-
-// Validate the API response data structure
-function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
-  if (!data || typeof data !== 'object') return false;
-  const day = data as Record<string, unknown>;
-  return (
-    typeof day.gregorian === 'object' &&
-    day.gregorian !== null &&
-    typeof day.hijri === 'object' &&
-    day.hijri !== null
-  );
 }
 
 // Get the Hijri year for a given Gregorian date

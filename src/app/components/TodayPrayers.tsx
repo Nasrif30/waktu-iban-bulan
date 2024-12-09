@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { PrayerTimes } from '../types';
 import { getPrayerTimes } from '../utils/api';
-import { format, parse, differenceInMilliseconds } from 'date-fns';
+import { format, parse } from 'date-fns';
 
 export default function TodayPrayers() {
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimes | null>(null);
@@ -42,7 +42,6 @@ export default function TodayPrayers() {
       const now = new Date();
       const today = format(now, 'yyyy-MM-dd');
       
-      // Ensure prayerTimes is not null within this scope
       const times = prayerTimes as PrayerTimes;
       
       const prayers = [
@@ -78,7 +77,6 @@ export default function TodayPrayers() {
       }
 
       if (!nextPrayerTime && times.fajr) {
-        // If no next prayer today, set to tomorrow's Fajr
         const tomorrow = new Date(now);
         tomorrow.setDate(tomorrow.getDate() + 1);
         try {
@@ -89,28 +87,23 @@ export default function TodayPrayers() {
           );
           nextPrayerName = 'Fajr';
         } catch (error) {
-          console.error('Error parsing tomorrow\'s Fajr time', error);
+          console.error('Error parsing tomorrow\'s Fajr time:', error);
         }
       }
 
+      setNextPrayer(nextPrayerName);
+
       if (nextPrayerTime) {
-        setNextPrayer(nextPrayerName);
-        const diff = differenceInMilliseconds(nextPrayerTime, now);
+        const diff = nextPrayerTime.getTime() - now.getTime();
         const hours = Math.floor(diff / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-        setCountdown(
-          `${hours.toString().padStart(2, '0')}:${minutes
-            .toString()
-            .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-        );
+        setCountdown(`${hours}:${minutes}:${seconds}`);
       }
     }
 
     updateNextPrayer();
     const interval = setInterval(updateNextPrayer, 1000);
-
     return () => clearInterval(interval);
   }, [prayerTimes]);
 
