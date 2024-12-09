@@ -20,6 +20,42 @@ const ISLAMIC_MONTHS = {
   RAMADAN: 9
 } as const;
 
+// API Response Types
+interface BaseApiResponse {
+  code: number;
+  status: string;
+}
+
+interface HijriResponse extends BaseApiResponse {
+  data: {
+    hijri: {
+      date: string;
+      month: {
+        number: number;
+        en: string;
+      };
+      year: string;
+    };
+  };
+}
+
+interface PrayerResponse extends BaseApiResponse {
+  results: {
+    Fajr: string;
+    Sunrise: string;
+    Dhuhr: string;
+    Asr: string;
+    Maghrib: string;
+    Isha: string;
+  };
+}
+
+interface CalendarResponse extends BaseApiResponse {
+  data: HijriCalendarDay[];
+}
+
+type ApiData = HijriResponse | PrayerResponse | CalendarResponse;
+
 interface HijriCalendarDay {
   gregorian: {
     date: string;
@@ -55,6 +91,19 @@ interface VerificationResult {
   secondaryDates?: unknown;
 }
 
+// Type guards
+function isPrayerResponse(data: ApiData): data is PrayerResponse {
+  return 'results' in data;
+}
+
+function isHijriResponse(data: ApiData): data is HijriResponse {
+  return 'data' in data && 'hijri' in data.data;
+}
+
+function isCalendarResponse(data: ApiData): data is CalendarResponse {
+  return 'data' in data && Array.isArray(data.data);
+}
+
 // Type guard to check if data is a valid calendar day
 function isValidCalendarDay(data: unknown): data is HijriCalendarDay {
   if (!data || typeof data !== 'object') return false;
@@ -72,7 +121,7 @@ async function fetchWithRetry(
   url: string,
   params: Record<string, string | number>,
   retries = 3
-): Promise<any> {
+): Promise<ApiData> {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await axios.get(url, {
@@ -83,8 +132,8 @@ async function fetchWithRetry(
         }
       });
       return response.data;
-    } catch (error) {
-      if (i === retries - 1) throw error;
+    } catch (err) {
+      if (i === retries - 1) throw err;
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
@@ -106,13 +155,100 @@ async function findRamadanYear(gregorianYear: number): Promise<number> {
       {}
     );
 
-    if (response?.code === 200 && response?.data?.hijri) {
+    if (isHijriResponse(response) && response.code === 200) {
       return parseInt(response.data.hijri.year);
     }
     throw new Error('Failed to convert date');
-  } catch (error) {
-    // Fallback to approximation if API fails
+  } catch (err) {
+    console.error('Error finding Ramadan year:', err);
     return Math.floor(gregorianYear - 622 + (gregorianYear - 622) / 32.5);
+  }
+}
+
+// Get prayer times for a specific date
+export async function getPrayerTimes(date: Date = new Date()): Promise<ApiResponse> {
+  try {
+    const params = {
+      latitude: DEFAULT_LOCATION.latitude.toString(),
+      longitude: DEFAULT_LOCATION.longitude.toString(),
+      timezone: DEFAULT_LOCATION.timezone,
+      method: DEFAULT_LOCATION.method.toString(),
+      time_format: '0',
+      juristic: '0',
+      high_latitude: '1',
+      date: format(date, 'yyyy-MM-dd')
+    };
+    
+    const prayerData = await fetchWithRetry(
+      `${ISLAMIC_FINDER_BASE_URL}/prayer_times`,
+      params
+    );
+    
+    if (!isPrayerResponse(prayerData)) {
+      throw new Error('Invalid prayer times response format');
+    }
+
+    const hijriData = await fetchWithRetry(
+      `${ALADHAN_BASE_URL}/gToH/${format(date, 'dd-MM-yyyy')}`,
+      {}
+    );
+
+    if (!isHijriResponse(hijriData)) {
+      throw new Error('Invalid Hijri date response format');
+    }
+
+    const timings = {
+      Fajr: formatTime(prayerData.results.Fajr),
+      Sunrise: formatTime(prayerData.results.Sunrise),
+      Dhuhr: formatTime(prayerData.results.Dhuhr),
+      Asr: formatTime(prayerData.results.Asr),
+      Maghrib: formatTime(prayerData.results.Maghrib),
+      Isha: formatTime(prayerData.results.Isha)
+    };
+
+    const validTimings = Object.fromEntries(
+      Object.entries(timings).filter(([, time]) => time !== '')
+    ) as Record<string, string>;
+
+    return {
+      code: 200,
+      status: 'OK',
+      data: {
+        timings: {
+          Fajr: validTimings.Fajr || '',
+          Dhuhr: validTimings.Dhuhr || '',
+          Asr: validTimings.Asr || '',
+          Maghrib: validTimings.Maghrib || '',
+          Isha: validTimings.Isha || ''
+        },
+        date: {
+          readable: format(date, 'dd MMM yyyy'),
+          timestamp: date.getTime().toString(),
+          gregorian: {
+            date: format(date, 'dd-MM-yyyy'),
+            format: 'DD-MM-YYYY',
+            day: format(date, 'dd'),
+            weekday: format(date, 'EEEE'),
+            month: {
+              number: parseInt(format(date, 'M')),
+              en: format(date, 'MMMM')
+            },
+            year: format(date, 'yyyy')
+          },
+          hijri: {
+            date: hijriData.data.hijri.date,
+            month: {
+              number: hijriData.data.hijri.month.number,
+              en: hijriData.data.hijri.month.en
+            },
+            year: hijriData.data.hijri.year
+          }
+        }
+      }
+    };
+  } catch (err) {
+    console.error('Error fetching prayer times:', err);
+    throw new Error('Failed to fetch prayer times. Please try again later.');
   }
 }
 
@@ -130,22 +266,22 @@ export async function getMonthCalendar(
       method: DEFAULT_LOCATION.method.toString()
     };
 
-    const data = await fetchWithRetry(
+    const response = await fetchWithRetry(
       `${ALADHAN_BASE_URL}/gToHCalendar/${month}/${year}`,
       params
     );
 
-    if (!data || data.code !== 200 || !Array.isArray(data.data)) {
+    if (!isCalendarResponse(response) || response.code !== 200) {
       throw new Error('Invalid calendar data received');
     }
 
     return {
       code: 200,
       status: 'OK',
-      data: data.data as CalendarDay[]
+      data: response.data as CalendarDay[]
     };
-  } catch (error) {
-    console.error('Error fetching calendar:', error);
+  } catch (err) {
+    console.error('Error fetching calendar:', err);
     throw new Error('Failed to fetch calendar data. Please try again later.');
   }
 }
@@ -171,13 +307,13 @@ export async function getRamadanCalendar(
         annual: "false"
       };
       
-      const data = await fetchWithRetry(
+      const response = await fetchWithRetry(
         `${ALADHAN_BASE_URL}/hijriCalendar`,
         params
       );
       
-      if (data?.code === 200 && Array.isArray(data.data)) {
-        const validDays = data.data
+      if (isCalendarResponse(response) && response.code === 200) {
+        const validDays = response.data
           .filter((day: unknown) => isValidCalendarDay(day))
           .map((day: HijriCalendarDay) => ({
             gregorian: {
@@ -231,96 +367,9 @@ export async function getRamadanCalendar(
       status: 'OK',
       data: ramadanDays
     };
-  } catch (error) {
-    console.error('Error fetching Ramadan calendar:', error);
+  } catch (err) {
+    console.error('Error fetching Ramadan calendar:', err);
     throw new Error('Failed to fetch Ramadan calendar. Please try again later.');
-  }
-}
-
-// Get prayer times for a specific date
-export async function getPrayerTimes(date: Date = new Date()): Promise<ApiResponse> {
-  try {
-    const params = {
-      latitude: DEFAULT_LOCATION.latitude.toString(),
-      longitude: DEFAULT_LOCATION.longitude.toString(),
-      timezone: DEFAULT_LOCATION.timezone,
-      method: DEFAULT_LOCATION.method.toString(),
-      time_format: '0',
-      juristic: '0',
-      high_latitude: '1',
-      date: format(date, 'yyyy-MM-dd')
-    };
-    
-    const prayerData = await fetchWithRetry(
-      `${ISLAMIC_FINDER_BASE_URL}/prayer_times`,
-      params
-    );
-    
-    if (!prayerData?.results) {
-      throw new Error('Invalid prayer times response format');
-    }
-
-    const hijriData = await fetchWithRetry(
-      `${ALADHAN_BASE_URL}/gToH/${format(date, 'dd-MM-yyyy')}`,
-      {}
-    );
-
-    if (!hijriData?.data?.hijri) {
-      throw new Error('Invalid Hijri date response format');
-    }
-
-    const timings = {
-      Fajr: formatTime(prayerData.results.Fajr),
-      Sunrise: formatTime(prayerData.results.Sunrise),
-      Dhuhr: formatTime(prayerData.results.Dhuhr),
-      Asr: formatTime(prayerData.results.Asr),
-      Maghrib: formatTime(prayerData.results.Maghrib),
-      Isha: formatTime(prayerData.results.Isha)
-    };
-
-    const validTimings = Object.fromEntries(
-      Object.entries(timings).filter(([, time]) => time !== '')
-    ) as Record<string, string>;
-
-    return {
-      code: 200,
-      status: 'OK',
-      data: {
-        timings: {
-          Fajr: validTimings.Fajr || '',
-          Dhuhr: validTimings.Dhuhr || '',
-          Asr: validTimings.Asr || '',
-          Maghrib: validTimings.Maghrib || '',
-          Isha: validTimings.Isha || ''
-        },
-        date: {
-          readable: format(date, 'dd MMM yyyy'),
-          timestamp: date.getTime().toString(),
-          gregorian: {
-            date: format(date, 'dd-MM-yyyy'),
-            format: 'DD-MM-YYYY',
-            day: format(date, 'dd'),
-            weekday: format(date, 'EEEE'),
-            month: {
-              number: parseInt(format(date, 'M')),
-              en: format(date, 'MMMM')
-            },
-            year: format(date, 'yyyy')
-          },
-          hijri: {
-            date: hijriData.data.hijri.date,
-            month: {
-              number: hijriData.data.hijri.month.number,
-              en: hijriData.data.hijri.month.en
-            },
-            year: hijriData.data.hijri.year
-          }
-        }
-      }
-    };
-  } catch (error) {
-    console.error('Error fetching prayer times:', error);
-    throw new Error('Failed to fetch prayer times. Please try again later.');
   }
 }
 
@@ -344,8 +393,8 @@ export async function verifyRamadanDates(year: number): Promise<VerificationResu
       secondaryDates: secondaryData,
       datesMatch
     };
-  } catch (error) {
-    console.error('Error verifying Ramadan dates:', error);
+  } catch (err) {
+    console.error('Error verifying Ramadan dates:', err);
     return { datesMatch: false };
   }
 } 
